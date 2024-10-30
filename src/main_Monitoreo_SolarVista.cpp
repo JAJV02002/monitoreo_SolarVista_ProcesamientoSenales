@@ -1,6 +1,6 @@
 //-----Planta piloto virtual para el monitoreo y gestión de energía fotovoltaica-------------
 //-----UNIVERSIDAD DE COLIMA/ UNIVERSIDAD AUTONOMA DE SAN LUIS POTOSI------
-//-----ESTUDIANTEs: JOSÉ ANTONIO JUÁREZ VELÁZQUEZ--------------------------
+//-----ESTUDIANTE: JOSÉ ANTONIO JUÁREZ VELÁZQUEZ--------------------------
 //-----INVESTIGADORES: DRA. JANETH AURELIA ALCALÁ RODRÍGUEZ 
 //-----                DR. VÍCTOR MANUEL CÁRDENAS GALINDO----------------------------
 //---- última actualización: OCTUBRE 2024-------------
@@ -55,6 +55,7 @@ struct WiFiInfo {
 };
 // Redes WiFi conocidas
 const WiFiInfo knownNetworks[] PROGMEM = {
+  {"Lab_CEECM", "Lab_CEECM_2024"},
   {"LABCEECM1", "2016labCEECM"},
   {"LABCEECM2", "2016labCEECM"},
   {"Lab_Pot_Ghetto", "labpotlabpot"},
