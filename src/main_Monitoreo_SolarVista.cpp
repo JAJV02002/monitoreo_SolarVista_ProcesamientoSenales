@@ -1,5 +1,6 @@
 //-----Planta piloto virtual para el monitoreo y gestión de energía fotovoltaica-------------
 //-----UNIVERSIDAD DE COLIMA/ UNIVERSIDAD AUTONOMA DE SAN LUIS POTOSI------
+
 //-----ESTUDIANTE: JOSÉ ANTONIO JUÁREZ VELÁZQUEZ--------------------------
 //-----INVESTIGADORES: DRA. JANETH AURELIA ALCALÁ RODRÍGUEZ 
 //-----                DR. VÍCTOR MANUEL CÁRDENAS GALINDO----------------------------
@@ -9,6 +10,8 @@
 #include <WiFi.h> // Librería para conectar a WiFi
 #include <WiFiClientSecure.h> // Librería para realizar peticiones HTTPS
 #include <FirebaseESP32.h> // Librería para conectar ESP32 con Google Firebase
+#include <vector> // Librería para trabajar con vectores
+#include <utility> // Librería para trabajar con pares
 
 //****--DEFINICION DE PINES DE ENTRADA---*********
 const int pinTension = 34;  // GPIO34 para el sensor de tensión
@@ -107,7 +110,7 @@ void sendToServer(double voltaje, double corriente, double potencia, double ener
   if (WiFi.status() == WL_CONNECTED) {
     WiFiClientSecure client;
     client.setInsecure(); // Use insecure connection (no certificate validation)
-    
+
     if (client.connect("monitorFV.com", 443)) { // 443 is the port for HTTPS
       char data[150];  // Buffer para ahorrar espacio con String
       snprintf(data, sizeof(data), "voltaje=%.2f&corriente=%.3f&potencia=%.2f&energia=%.3f", 
@@ -122,7 +125,7 @@ void sendToServer(double voltaje, double corriente, double potencia, double ener
       postData += "Connection: close\r\n\r\n";
       postData += data;
       client.print(postData);
-      
+
       // Saltar las cabeceras HTTP
       while (client.connected()) {
         String line = client.readStringUntil('\n');
@@ -189,83 +192,37 @@ void loop() {
   float Irms = (rmsI * ICAL * (vRef / 1000.0));
   Vavg = Vavg * VCAL * (vRef / 1000.0);
   Iavg = Iavg * ICAL * (vRef / 1000.0);
-
+  
   // Escalamiento según los rangos de voltaje
-  if (Vrms <= 3) {
-    Vrms *= 0.4;
-  } else if (Vrms <= 5) {
-    Vrms *= 0.7185;
-  } else if (Vrms <= 7) {
-    Vrms *= 0.7185;
-  } else if (Vrms <= 8.5) {
-    Vrms *= 0.8;
-  }  else if (Vrms <= 10) {
-    Vrms *= 1.0391;
-  } else if (Vrms <= 19.79) {
-    Vrms *= 1.007;
-  } else if (Vrms <= 29.76) {
-    Vrms *= 1.0192;
-  } else if (Vrms <= 39.72) {
-    Vrms *= 1.0311;
-  } else if (Vrms <= 49.68) {
-    Vrms *= 1.0286;
-  } else if (Vrms <= 59.64) {
-    Vrms *= 1.0310;
-  } else if (Vrms <= 69.6) {
-    Vrms *= 1.0339;
-  } else if (Vrms <= 79.56) {
-    Vrms *= 1.0366;
-  } else if (Vrms <= 89.52) {
-    Vrms *= 1.0367;
-  } else if (Vrms <= 99.48) {
-    Vrms *= 1.0391;
-  } else if (Vrms <= 109.44) {
-    Vrms *= 1.0420;
-  } else if (Vrms <= 119.4) {
-    Vrms *= 1.0192;
-  } else if (Vrms <= 127) {
-    Vrms *= 1.0391;
-  } else if (Vrms > 127) {
-    Vrms *= 1.0414;
+  std::vector<std::pair<double, double>> voltageRanges = {
+      {3, 0.4}, {5, 0.7185}, {7, 0.7185}, {8.5, 0.8}, {10, 1.0391},
+      {19.79, 1.007}, {29.76, 1.0192}, {39.72, 1.0311}, {49.68, 1.0286},
+      {59.64, 1.0310}, {69.6, 1.0339}, {79.56, 1.0366}, {89.52, 1.0367},
+      {99.48, 1.0391}, {109.44, 1.0420}, {119.4, 1.0192}, {127, 1.0391},
+      {std::numeric_limits<double>::max(), 1.0414} // For Vrms > 127
+  };
+  
+  for (const auto& range : voltageRanges) {
+      if (Vrms <= range.first) {
+          Vrms *= range.second;
+          break;
+      }
   }
-
+  
   // Escalamiento según los rangos de corriente
-  if (Irms <= 0.061) {
-    Irms *= 0.01;
-  } else if (Irms <= 0.123) {
-    Irms *= 0.3;
-  } else if (Irms <= 0.245) {
-    Irms *= 0.563;
-  } else if (Irms <= 0.493) {
-    Irms *= 0.66;
-  } else if (Irms <= 0.737) {
-    Irms *= 0.8714;
-  } else if (Irms <= 0.981) {
-    Irms *= 0.8933;
-  } else if (Irms <= 1.472) {
-    Irms *= 0.9033;
-  } else if (Irms <= 1.964) {
-    Irms *= 0.9088;
-  } else if (Irms <= 2.471) {
-    Irms *= 0.9325;
-  } else if (Irms <= 2.96) {
-    Irms *= 0.9388;
-  } else if (Irms <= 3.463) {
-    Irms *= 0.9439;
-  } else if (Irms <= 3.961) {
-    Irms *= 0.9483;
-  } else if (Irms <= 4.463) {
-    Irms *= 0.9519;
-  } else if (Irms <= 4.961) {
-    Irms *= 0.9650;
-  } else if (Irms <= 5.463) {
-    Irms *= 0.9676;
-  } else if (Irms <= 5.961) {
-    Irms *= 0.9689;
-  } else if (Irms <= 6.463) {
-    Irms *= 0.9621;
-  } else if (Irms <= 6.8) {
-    Irms *= 0.9139;
+  std::vector<std::pair<double, double>> currentRanges = {
+      {0.061, 0.01}, {0.123, 0.3}, {0.245, 0.563}, {0.493, 0.66}, {0.737, 0.8714},
+      {0.981, 0.8933}, {1.472, 0.9033}, {1.964, 0.9088}, {2.471, 0.9325},
+      {2.96, 0.9388}, {3.463, 0.9439}, {3.961, 0.9483}, {4.463, 0.9519},
+      {4.961, 0.9650}, {5.463, 0.9676}, {5.961, 0.9689}, {6.463, 0.9621},
+      {6.8, 0.9139}
+  };
+  
+  for (const auto& range : currentRanges) {
+      if (Irms <= range.first) {
+          Irms *= range.second;
+          break;
+      }
   }
 
   // Cálculo de la potencia aparente
@@ -334,4 +291,3 @@ void loop() {
     delay(7500);
   }
 }
-//-----------------------------------------------------------------------------------------------------
