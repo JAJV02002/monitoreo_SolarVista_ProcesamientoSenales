@@ -1,63 +1,63 @@
-//-----Planta piloto virtual para el monitoreo y gestión de energía fotovoltaica-------------
-//-----UNIVERSIDAD DE COLIMA/ UNIVERSIDAD AUTONOMA DE SAN LUIS POTOSI------
+//-----Virtual pilot plant for photovoltaic energy monitoring and management-------------
+//-----UNIVERSITY OF COLIMA/ AUTONOMOUS UNIVERSITY OF SAN LUIS POTOSI------
 
-//-----ESTUDIANTE: JOSÉ ANTONIO JUÁREZ VELÁZQUEZ--------------------------
-//-----INVESTIGADORES: DRA. JANETH AURELIA ALCALÁ RODRÍGUEZ
+//-----STUDENT: JOSÉ ANTONIO JUÁREZ VELÁZQUEZ--------------------------
+//-----RESEARCHERS: DRA. JANETH AURELIA ALCALÁ RODRÍGUEZ
 //-----                DR. VÍCTOR MANUEL CÁRDENAS GALINDO----------------------------
-//---- última actualización: OCTUBRE 2024-------------
+//---- last update: OCTOBER 2024-------------
 
 #include <Arduino.h>
-#include <WiFi.h>             // Librería para conectar a WiFi
-#include <WiFiClientSecure.h> // Librería para realizar peticiones HTTPS
-#include <FirebaseESP32.h>    // Librería para conectar ESP32 con Google Firebase
-#include <vector>             // Librería para trabajar con vectores
-#include <utility>            // Librería para trabajar con pares
+#include <WiFi.h>             // Library to connect to WiFi
+#include <WiFiClientSecure.h> // Library to make HTTPS requests
+#include <FirebaseESP32.h>    // Library to connect ESP32 with Google Firebase
+#include <vector>             // Library to work with vectors
+#include <utility>            // Library to work with pairs
 
-//****--DEFINICION DE PINES DE ENTRADA---*********
-const int pinTension = 34;   // GPIO34 para el sensor de tensión
-const int pinCorriente = 35; // GPIO35 para el sensor de corriente
+//****--DEFINITION OF INPUT PINS---*********
+const int voltagePin = 34;   // GPIO34 for the voltage sensor
+const int currentPin = 35;   // GPIO35 for the current sensor
 
-// Parámetros de calibración para el ADC del ESP32
-const float vRef = 3300.0;      // Voltaje de referencia en mV (3.3V)
-const int resolucionADC = 4095; // Resolución del ADC (12 bits)
+// Calibration parameters for the ESP32 ADC
+const float vRef = 3300.0;      // Reference voltage in mV (3.3V)
+const int adcResolution = 4095; // ADC resolution (12 bits)
 
-// Parámetros de calibración para sensores
-const float VCAL = 179.0 / vRef; // Escala de calibración de tensión según el valor máximo de entrada de entrada(127V RMS)
-const float ICAL = 15 / vRef;    // Escala de calibración de corriente según el valor máximo de entrada del sensor(15 A RMS)
-const unsigned int ADC_COUNTS = resolucionADC;
+// Calibration parameters for sensors
+const float VCAL = 179.0 / vRef; // Voltage calibration scale according to the maximum input value (127V RMS)
+const float ICAL = 15 / vRef;    // Current calibration scale according to the maximum input value of the sensor (15 A RMS)
+const unsigned int ADC_COUNTS = adcResolution;
 
-// Variables para el filtro de paso bajo
-float offsetV = ADC_COUNTS / 3.1; // Offset de tensión inicial
-float offsetI = ADC_COUNTS / 2.9; // Offset de corriente inicial
+// Variables for the low-pass filter
+float offsetV = ADC_COUNTS / 3.1; // Initial voltage offset
+float offsetI = ADC_COUNTS / 2.9; // Initial current offset
 
-// Variables para el cálculo del RMS y promedio
-float avgV = 0.0;                // Valor promedio recursivo para tensión
-float avgI = 0.0;                // Valor promedio recursivo para corriente
-float sumSqV = 0.0;              // Suma acumulativa de los cuadrados de tensión
-float sumSqI = 0.0;              // Suma acumulativa de los cuadrados de corriente
-unsigned int numMuestras = 1000; // Número de muestras para cálculo
+// Variables for RMS and average calculation
+float avgV = 0.0;                // Recursive average value for voltage
+float avgI = 0.0;                // Recursive average value for current
+float sumSqV = 0.0;              // Cumulative sum of voltage squares
+float sumSqI = 0.0;              // Cumulative sum of current squares
+unsigned int numSamples = 1000;  // Number of samples for calculation
 
-// Variables para promediar múltiples mediciones
-const int numPromedios = 5;
-float acumuladorVrms = 0.0;
-float acumuladorIrms = 0.0;
-float acumuladorVavg = 0.0;
-float acumuladorIavg = 0.0;
-int contadorPromedios = 0;
+// Variables to average multiple measurements
+const int numAverages = 5;
+float vrmsAccumulator = 0.0;
+float irmsAccumulator = 0.0;
+float vavgAccumulator = 0.0;
+float iavgAccumulator = 0.0;
+int averageCounter = 0;
 
-// Variables para energía y potencia
-float potenciaActiva = 0.0;
-float potenciaAparente = 0.0;
-float consumoEnergetico = 0.0;
-unsigned long tiempoAnterior = 0;
+// Variables for energy and power
+float activePower = 0.0;
+float apparentPower = 0.0;
+float energyConsumption = 0.0;
+unsigned long previousTime = 0;
 
-// Estructura para almacenar credenciales de red WiFi
+// Structure to store WiFi network credentials
 struct WiFiInfo
 {
   const char *ssid;
   const char *password;
 };
-// Redes WiFi conocidas
+// Known WiFi networks
 const WiFiInfo knownNetworks[] PROGMEM = {
     {"Lab_CEECM", "Lab_CEECM_2024"},
     {"LABCEECM1", "2016labCEECM"},
@@ -65,20 +65,20 @@ const WiFiInfo knownNetworks[] PROGMEM = {
     {"Lab_Pot_Ghetto", "labpotlabpot"},
     {"Kawai", "nihongo2024!*"}};
 
-// Variables para la conexión a Firebase
+// Variables for Firebase connection
 #define FIREBASE_HOST "https://monitorfv-basedatos-esp32-default-rtdb.firebaseio.com/"
 #define FIREBASE_AUTH "1vD8ukIX6yFk1lX3Y6RaYKb7yRDvltUUnnpWqelw"
 FirebaseConfig config;
 FirebaseAuth auth;
 FirebaseData MonitorFV;
-const char *ruta = "/Ejemplo_01"; // Cambiado a const char* para ahorrar espacio
+const char *ruta = "/Ejemplo_01"; // Changed to const char* to save space
 
-// Prototipos de funciones
+// Function prototypes
 
 //-----------------------------------------------------------------------------------------------------
-//****---FUNCIÓN PARA CONECTAR A WIFI---**********
+//****---FUNCTION TO CONNECT TO WIFI---**********
 //-----------------------------------------------------------------------------------------------------
-void conectarWiFi()
+void connectWiFi()
 {
   for (size_t i = 0; i < sizeof(knownNetworks) / sizeof(knownNetworks[0]); ++i)
   {
@@ -87,7 +87,7 @@ void conectarWiFi()
     WiFi.begin(network.ssid, network.password);
 
     for (int j = 0; j < 5 && WiFi.status() != WL_CONNECTED; j++)
-    { // Reducido a 5 intentos
+    { // Reduced to 5 attempts
       delay(1000);
     }
     if (WiFi.status() == WL_CONNECTED)
@@ -98,9 +98,9 @@ void conectarWiFi()
 }
 
 //-----------------------------------------------------------------------------------------------------
-//****---FUNCIÓN PARA CONFIGURAR FIREBASE---**********
+//****---FUNCTION TO CONFIGURE FIREBASE---**********
 //-----------------------------------------------------------------------------------------------------
-void FirebaseConfiguracion()
+void configureFirebase()
 {
   config.host = FIREBASE_HOST;
   config.signer.tokens.legacy_token = FIREBASE_AUTH;
@@ -109,9 +109,9 @@ void FirebaseConfiguracion()
 }
 
 //-----------------------------------------------------------------------------------------------------
-//****---FUNCIÓN PARA ENVIAR DATOS A BASE DE DATOS MYSQL---**********
+//****---FUNCTION TO SEND DATA TO MYSQL DATABASE---**********
 //-----------------------------------------------------------------------------------------------------
-void sendToServer(double voltaje, double corriente, double potencia, double energia)
+void sendToServer(double voltage, double current, double power, double energy)
 {
   if (WiFi.status() == WL_CONNECTED)
   {
@@ -120,9 +120,9 @@ void sendToServer(double voltaje, double corriente, double potencia, double ener
 
     if (client.connect("monitorFV.com", 443))
     {                 // 443 is the port for HTTPS
-      char data[150]; // Buffer para ahorrar espacio con String
+      char data[150]; // Buffer to save space with String
       snprintf(data, sizeof(data), "voltaje=%.2f&corriente=%.3f&potencia=%.2f&energia=%.3f",
-               voltaje, corriente, potencia, energia);
+               voltage, current, power, energy);
 
       String postData = "POST /save_data_p1.php HTTP/1.1\r\n";
       postData += "Host: monitorFV.com\r\n";
@@ -134,7 +134,7 @@ void sendToServer(double voltaje, double corriente, double potencia, double ener
       postData += data;
       client.print(postData);
 
-      // Saltar las cabeceras HTTP
+      // Skip HTTP headers
       while (client.connected())
       {
         String line = client.readStringUntil('\n');
@@ -151,62 +151,62 @@ void sendToServer(double voltaje, double corriente, double potencia, double ener
 //-----------------------------------------------------------------------------------------------------
 void setup()
 {
-  Serial.begin(115200);     // Inicializar comunicación serial
-  analogReadResolution(12); // Configurar resolución del ADC a 12 bits
-  tiempoAnterior = millis();
-  conectarWiFi();          // Conectar a red WiFi
-  FirebaseConfiguracion(); // Configurar Firebase
+  Serial.begin(115200);     // Initialize serial communication
+  analogReadResolution(12); // Set ADC resolution to 12 bits
+  previousTime = millis();
+  connectWiFi();          // Connect to WiFi network
+  configureFirebase();    // Configure Firebase
 }
 
 //-----------------------------------------------------------------------------------------------------
-//****---PROGRAMA PRINCIPAL---**********************
+//****---MAIN PROGRAM---**********************
 //-----------------------------------------------------------------------------------------------------
 void loop()
 {
-  // Inicializar las sumas para el cálculo del RMS
+  // Initialize sums for RMS calculation
   sumSqV = 0.0;
   sumSqI = 0.0;
   avgV = 0.0;
   avgI = 0.0;
 
-  // Lectura de muestras para cálculo del RMS y promedio
-  for (unsigned int n = 0; n < numMuestras; n++)
+  // Read samples for RMS and average calculation
+  for (unsigned int n = 0; n < numSamples; n++)
   {
-    int lecturaADC_Tension = analogRead(pinTension);
-    int lecturaADC_Corriente = analogRead(pinCorriente);
+    int adcReadingVoltage = analogRead(voltagePin);
+    int adcReadingCurrent = analogRead(currentPin);
 
-    // Filtro paso bajo para eliminar el offset
-    offsetV += (lecturaADC_Tension - offsetV) / 512.0;
-    float filteredV = lecturaADC_Tension - offsetV;
-    offsetI += (lecturaADC_Corriente - offsetI) / 512.0;
-    float filteredI = lecturaADC_Corriente - offsetI;
+    // Low-pass filter to remove offset
+    offsetV += (adcReadingVoltage - offsetV) / 512.0;
+    float filteredV = adcReadingVoltage - offsetV;
+    offsetI += (adcReadingCurrent - offsetI) / 512.0;
+    float filteredI = adcReadingCurrent - offsetI;
 
-    // Cálculo del cuadrado de la señal filtrada
+    // Calculate the square of the filtered signal
     float sqV = filteredV * filteredV;
     float sqI = filteredI * filteredI;
 
-    // Acumulación de los cuadrados para el RMS
+    // Accumulate squares for RMS
     sumSqV += sqV;
     sumSqI += sqI;
 
-    // Acumulación para el cálculo del promedio
+    // Accumulate for average calculation
     avgV += filteredV;
     avgI += filteredI;
   }
 
-  // Calcular el RMS y el promedio
-  float rmsV = sqrt(sumSqV / numMuestras);
-  float rmsI = sqrt(sumSqI / numMuestras);
-  float Vavg = avgV / numMuestras;
-  float Iavg = avgI / numMuestras;
+  // Calculate RMS and average
+  float rmsV = sqrt(sumSqV / numSamples);
+  float rmsI = sqrt(sumSqI / numSamples);
+  float Vavg = avgV / numSamples;
+  float Iavg = avgI / numSamples;
 
-  // Escalamiento de los valores RMS y promedio
+  // Scale RMS and average values
   float Vrms = (rmsV * VCAL * (vRef / 1000.0));
   float Irms = (rmsI * ICAL * (vRef / 1000.0));
   Vavg = Vavg * VCAL * (vRef / 1000.0);
   Iavg = Iavg * ICAL * (vRef / 1000.0);
   
-  // Escalamiento según los rangos de voltaje
+  // Scaling according to voltage ranges
   std::vector<std::pair<double, double>> voltageRanges = {
       {3, 0}, {5, 0}, {7, 0.7185}, {8.5, 0.8}, {10, 1.0391},
       {19.79, 1.007}, {29.76, 1.0192}, {39.72, 1.0311}, {49.68, 1.0286},
@@ -222,7 +222,7 @@ void loop()
       }
   }
   
- // Escalamiento según los rangos de corriente
+ // Scaling according to current ranges
   std::vector<std::pair<double, double>> currentRanges = {
       {0.061, 0.00}, {0.123, 0.00}, {0.245, 0.00}, {0.320, 0.0}, {0.42, 0.632}, {0.609, 0.89}, 
       {0.849518, 0.95}, {0.981, 0.8933}, {1.101482, 0.9769}, {1.472, 0.9033}, 
@@ -242,57 +242,57 @@ void loop()
       }
   }
 
-  // Cálculo de la potencia aparente
-  potenciaAparente = Vrms * Irms;
+  // Calculate apparent power
+  apparentPower = Vrms * Irms;
 
-  // Cálculo de la potencia activa (suponiendo factor de potencia 1, sin fase)
-  potenciaActiva = potenciaAparente; // Para cargas resistivas (pf = 1)
+  // Calculate active power (assuming power factor 1, no phase)
+  activePower = apparentPower; // For resistive loads (pf = 1)
 
-  // Cálculo del consumo energético (Wh)
-  unsigned long tiempoActual = millis();
-  float tiempoTranscurridoHoras = (tiempoActual - tiempoAnterior) / 3600000.0; // Tiempo en horas
-  consumoEnergetico += potenciaActiva * tiempoTranscurridoHoras;
-  tiempoAnterior = tiempoActual; // Actualizar el tiempo
+  // Calculate energy consumption (Wh)
+  unsigned long currentTime = millis();
+  float elapsedTimeHours = (currentTime - previousTime) / 3600000.0; // Time in hours
+  energyConsumption += activePower * elapsedTimeHours;
+  previousTime = currentTime; // Update time
 
-  // Acumulación para el promedio de múltiples mediciones
-  acumuladorVrms += Vrms;
-  acumuladorIrms += Irms;
-  acumuladorVavg += Vavg;
-  acumuladorIavg += Iavg;
-  contadorPromedios++;
+  // Accumulate for the average of multiple measurements
+  vrmsAccumulator += Vrms;
+  irmsAccumulator += Irms;
+  vavgAccumulator += Vavg;
+  iavgAccumulator += Iavg;
+  averageCounter++;
 
-  if (contadorPromedios == numPromedios)
+  if (averageCounter == numAverages)
   {
-    Vrms = acumuladorVrms / numPromedios;
-    Irms = acumuladorIrms / numPromedios;
-    Vavg = acumuladorVavg / numPromedios;
-    Iavg = acumuladorIavg / numPromedios;
+    Vrms = vrmsAccumulator / numAverages;
+    Irms = irmsAccumulator / numAverages;
+    Vavg = vavgAccumulator / numAverages;
+    Iavg = iavgAccumulator / numAverages;
 
-    // Resetear acumuladores
-    acumuladorVrms = 0.0;
-    acumuladorIrms = 0.0;
-    acumuladorVavg = 0.0;
-    acumuladorIavg = 0.0;
-    contadorPromedios = 0;
+    // Reset accumulators
+    vrmsAccumulator = 0.0;
+    irmsAccumulator = 0.0;
+    vavgAccumulator = 0.0;
+    iavgAccumulator = 0.0;
+    averageCounter = 0;
 
-    // Cambio de nombre de variables para que coincidan con los datos de la base de datos
+    // Rename variables to match database data
     float voltaje = Vrms;
     float corriente = Irms;
-    float potencia = potenciaAparente;
-    float energia = consumoEnergetico;
+    float potencia = apparentPower;
+    float energia = energyConsumption;
 
-    // Crear el mensaje en formato JSON
+    // Create the message in JSON format
     /*String json = "{";
     json += "\"Vrms\":" + String(Vrms, 3) + ",";
     json += "\"Irms\":" + String(Irms, 3) + ",";
-    json += "\"PotenciaActiva\":" + String(potenciaActiva, 3) + ",";
-    json += "\"PotenciaAparente\":" + String(potenciaAparente, 3) + ",";
-    json += "\"ConsumoEnergetico\":" + String(consumoEnergetico, 3) + "}";
+    json += "\"PotenciaActiva\":" + String(activePower, 3) + ",";
+    json += "\"PotenciaAparente\":" + String(apparentPower, 3) + ",";
+    json += "\"ConsumoEnergetico\":" + String(energyConsumption, 3) + "}";
 
-    // Enviar el mensaje JSON por el puerto serial
+    // Send the JSON message through the serial port
     Serial.println(json);*/
 
-    // Enviar los datos a Firebase
+    // Send data to Firebase
     if (WiFi.status() == WL_CONNECTED && Firebase.ready())
     {
       FirebaseJson json;
@@ -303,10 +303,10 @@ void loop()
       Firebase.updateNode(MonitorFV, ruta, json);
     }
 
-    // Enviar los datos a la base de datos MySQL
+    // Send data to MySQL database
     sendToServer(voltaje, corriente, potencia, energia);
 
-    // Agregar espera de 7.5s para impresión de datos en monitor serial (opcional)
+    // Add 7.5s delay for data printing on serial monitor (optional)
     delay(7500);
   }
 }
