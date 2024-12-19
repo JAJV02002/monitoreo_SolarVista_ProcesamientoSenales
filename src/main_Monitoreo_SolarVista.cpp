@@ -1,10 +1,12 @@
-//-----Virtual pilot plant for photovoltaic energy monitoring and management-------------
+//-----PROJECT TITLE: DEVELOPMENT OF A VIRTUAL PILOT PLANT FOR THE MONITORING AND MANAGEMENT OF PHOTOVOLTAIC ENERGY BASED ON THE INTERNET OF THINGS (IoT)----------------
 //-----UNIVERSITY OF COLIMA/ AUTONOMOUS UNIVERSITY OF SAN LUIS POTOSI------
 
-//-----STUDENT: JOSÉ ANTONIO JUÁREZ VELÁZQUEZ--------------------------
-//-----RESEARCHERS: DRA. JANETH AURELIA ALCALÁ RODRÍGUEZ
-//-----                DR. VÍCTOR MANUEL CÁRDENAS GALINDO----------------------------
-//---- last update: OCTOBER 2024-------------
+//----- CODE FOR THE SIGNAL PROCESSING OF THE VOLTAGE AND CURRENT SENSORS OF THE PHOTOVOLTAIC SYSTEM AND THE SENDING OF DATA TO THE DATABASE----------------
+
+//-----CODE DEVELOPED BY: ENG. JOSÉ ANTONIO JUÁREZ VELÁZQUEZ--------------------------
+//-----RESEARCHERS IN CHARGE: JANETH AURELIA ALCALÁ RODRÍGUEZ PhD.---------------------
+//-----                       VÍCTOR MANUEL CÁRDENAS GALINDO PhD.----------------------------
+//----- last update: DECEMBER 2024-------------
 
 #include <Arduino.h>
 #include <WiFi.h>             // Library to connect to WiFi
